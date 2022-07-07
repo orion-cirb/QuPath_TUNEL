@@ -3,7 +3,6 @@ import qupath.ext.stardist.StarDist2D
 import qupath.lib.gui.dialogs.Dialogs
 import qupath.lib.images.servers.ColorTransforms
 import qupath.lib.objects.classes.PathClassFactory
-import static qupath.lib.analysis.DistanceTools.centroidToBoundsDistance2D
 import static qupath.lib.scripting.QP.*
 
 
@@ -28,16 +27,13 @@ def resultsDir = buildFilePath(imageDir, '/../Results')
 if (!fileExists(resultsDir)) mkdirs(resultsDir)
 def resultsFile = new File(buildFilePath(resultsDir, 'Results.csv'))
 resultsFile.createNewFile()
-def res = "Animal number\tMutant\tTreatment\tTime\tAnnotation\tAnnotation area (um2)\tDAB region area\tNb DAB cells\tNb nuclei\t" +
-        "Nb DAB cells-nuclei\tStroma region area\tNb DAB cells\tNb nuclei\tNb DAB cells-nuclei\n"
+def res = "Image name\tAnimal number\tMutant\tTreatment\tTime\tAnnotation\tAnnotation area (um2)\tDAB region area\t" +
+        "Nb nuclei\tNb DAB cells\tNb DAB cells-nuclei\n"
 resultsFile.write(res)
 
 // Define ClassPaths
-// Regions classpaths
-def DABRoiClass = PathClassFactory.getPathClass("DAB ROI", makeRGB(0, 255, 0))
-def StromaRoiClass = PathClassFactory.getPathClass("Stroma ROI", makeRGB(0, 0, 255))
-// Cells classpaths
-def NucleiClass = PathClassFactory.getPathClass("Nucleus", makeRGB(255, 255, 0))
+def DABRoiClass = PathClassFactory.getPathClass("DAB", makeRGB(0, 255, 0))
+def NucleiClass = PathClassFactory.getPathClass("Nucleus", makeRGB(0, 0, 255))
 def DABCellsClass = PathClassFactory.getPathClass("DAB Cell", makeRGB(255, 165, 0))
 def DABNucleiClass = PathClassFactory.getPathClass("DAB+Nucleus Cell", makeRGB(255, 0, 0))
 
@@ -106,98 +102,97 @@ for (entry in project.getImageList()) {
     println '------ ANALYZING IMAGE ' + imgName + ' ------'
 
     // Find annotations
-    def hierarchy = imageData.getHierarchy()
-    def annotations = getAnnotationObjects()
+    def allAnnotations = getAnnotationObjects()
+    def annotations = allAnnotations.findAll{ it.getName() != 'background'}
     if (annotations.isEmpty()) {
         Dialogs.showErrorMessage("Problem", "Please create ROIs to analyze in image " + imgName)
         continue
     }
+    def index = annotations.size()
+    for (an in annotations) {
+        if (an.getName() == null) {
+            index++
+            an.setName("ROI_" + index)
+        }
+    }
+    def background = allAnnotations.findAll{it.getName() == 'background'}[0]
+    if (background == null) {
+        Dialogs.showErrorMessage("Problem", "Please provide a background ROI for image " + imgName)
+        break
+    }
+    selectObjects(background)
+    runPlugin('qupath.lib.algorithms.IntensityFeaturesPlugin', '{"pixelSizeMicrons": 2.0,  "region": "ROI",  "tileSizeMicrons": 25.0,  "colorOD": false,  ' +
+            '"colorStain1": true,  "colorStain2": true,  "colorStain3": false,  "colorRed": false,  "colorGreen": false,  "colorBlue": false,  "colorHue": false,  "colorSaturation": false,  ' +
+            '"colorBrightness": false,  "doMean": true,  "doStdDev": false,  "doMinMax": false,  "doMedian": false,  "doHaralick": false}')
+    def bgIntHematoxylin = background.getMeasurementList().getMeasurementValue('ROI: 2.00 µm per pixel: Hematoxylin: Mean')
+    def bgIntDAB = background.getMeasurementList().getMeasurementValue('ROI: 2.00 µm per pixel: DAB: Mean')
+    println 'Background median intensity in Hematoxylin channel = ' + bgIntHematoxylin
+    println 'Background median intensity in DAB channel = ' + bgIntDAB
 
-    println('-Finding DAB and Stroma regions in each annotation...')
+    println '-Finding DAB region in each ROI...'
     def classifier = project.getPixelClassifiers().get('DAB')
     setColorDeconvolutionStains('{"Name" : "H-DAB default", "Stain 1" : "Hematoxylin", "Values 1" : "0.65111 0.70119 0.29049", "Stain 2" : "DAB", "Values 2" : "0.26917 0.56824 0.77759", "Background" : " 255 255 255"}');
-    resetSelection()
-    selectAnnotations()
-    createAnnotationsFromPixelClassifier(classifier, 20.0, 20.0, 'DELETE_EXISTING')
+    deselectAll()
+    selectObjects(annotations)
+    createAnnotationsFromPixelClassifier(classifier, 750.0, 750.0, 'DELETE_EXISTING')
+    def DABRois = getAnnotationObjects().findAll({it.getPathClass() == DABRoiClass})
 
-    def index = 0
-    for (an in annotations) {
-        index++
-        if (an.getName() == null) an.setName("Region_" + index)
+    for (roi in DABRois) {
+        def an = roi.getParent()
         println '--- Analyzing ROI ' + an.getName() + ' of image ' + imgName + ' ---'
 
-        // Get annotation area
+        // Find annotation area
         def regionArea = an.getROI().getScaledArea(pixelWidth, pixelWidth)
         println an.getName() + ' ROI area = ' + regionArea + ' ' + pixelUnit + '2'
 
         // Find DAB ROI and its area
-        def DABRoi = getAnnotationObjects().findAll{! it.hasChildren()
-                && it.getParent().getName() == an.getName() && it.getPathClass().getName() == 'DAB'}[0]
-        def DABArea = DABRoi.getROI().getScaledArea(pixelWidth, pixelWidth)
+        def DABArea = roi.getROI().getScaledArea(pixelWidth, pixelWidth)
         println 'DAB region area = ' + DABArea + ' ' + pixelUnit + '2'
-        DABRoi.setPathClass(DABRoiClass)
-
-        // Find Stroma ROI and its area
-        def stromaRoi = getAnnotationObjects().findAll{! it.hasChildren()
-                && it.getParent().getName() == an.getName() && it.getPathClass().getName() == 'Stroma'}[0]
-        def stromaArea = stromaRoi.getROI().getScaledArea(pixelWidth, pixelWidth)
-        println 'Stroma region area = ' + stromaArea + ' ' + pixelUnit + '2'
-        stromaRoi.setPathClass(StromaRoiClass)
 
         // Find nuclei in DAB region
         println '-Finding nuclei in DAB region...'
-        stardistNuclei.detectObjects(imageData, DABRoi, true)
-        def NucleiInDAB = DABRoi.getChildObjects().findAll{it.getPathClass() == NucleiClass
-                && it.getMeasurementList().getMeasurementValue('Area µm^2') < 150
-                && it.getMeasurementList().getMeasurementValue('Hematoxylin: Mean') > 0.7}
-        println 'Nb of nuclei in DAB region = ' + NucleiInDAB.size()
+        stardistNuclei.detectObjects(imageData, roi, true)
+        def nuclei = roi.getChildObjects().findAll{it.getPathClass() == NucleiClass
+                && it.getMeasurementList().getMeasurementValue('Area µm^2') < 250
+                && it.getMeasurementList().getMeasurementValue('Hematoxylin: Mean') > (1.5 * bgIntHematoxylin)}
+        println 'Nb of nuclei detected = ' + nuclei.size()
 
         // Find DAB cells in DAB region
         println '-Finding DAB cells in DAB region ...'
-        stardistDAB.detectObjects(imageData, DABRoi, true)
-        def DABCellsInDAB = DABRoi.getChildObjects().findAll{it.getPathClass() == DABCellsClass
-                && it.getMeasurementList().getMeasurementValue('Area µm^2') < 50
-                && it.getMeasurementList().getMeasurementValue('DAB: Mean') > 0.7}
-        println 'Nb DAB cells in DAB region = ' + DABCellsInDAB.size()
-        DABRoi.clearPathObjects()
-
-        def nb_DABNucCells_inDAB = classifyCells(DABCellsInDAB, NucleiInDAB, DABNucleiClass)
-        println 'DAB cells with nucleus in DAB region = ' + nb_DABNucCells_inDAB
-
-        // Find nuclei in Stroma region
-        println '-Finding nuclei in Stroma region...'
-        stardistNuclei.detectObjects(imageData, stromaRoi, true)
-        def NucleiInStroma = stromaRoi.getChildObjects().findAll{it.getPathClass() == NucleiClass
+        stardistDAB.detectObjects(imageData, roi, true)
+        def DABCells = roi.getChildObjects().findAll{it.getPathClass() == DABCellsClass
                 && it.getMeasurementList().getMeasurementValue('Area µm^2') < 150
-                && it.getMeasurementList().getMeasurementValue('Hematoxylin: Mean') > 0.7}
-        println 'Nb of nuclei in Stroma region = ' + NucleiInStroma.size()
+                && it.getMeasurementList().getMeasurementValue('DAB: Mean') > (1.5 * bgIntDAB)}
+        println 'Nb of DAB cells detected = ' + DABCells.size()
 
-        // Find DAB cells in Stroma region
-        println '-Finding DAB cells in Stroma region ...'
-        stardistDAB.detectObjects(imageData, stromaRoi, true)
-        def DABCellsInStroma = stromaRoi.getChildObjects().findAll{it.getPathClass() == DABCellsClass
-                && it.getMeasurementList().getMeasurementValue('Area µm^2') < 50
-                && it.getMeasurementList().getMeasurementValue('DAB: Mean') > 0.7}
-        println 'Nb DAB cells in Stroma region = ' + DABCellsInStroma.size()
-        stromaRoi.clearPathObjects()
+        def nb_DABCells_nuclei = classifyCells(DABCells, nuclei, DABNucleiClass)
+        println 'Nb of DAB cells colocalizing with a nucleus  = ' + nb_DABCells_nuclei
 
-        def nb_DABNucCells_inStroma = classifyCells(DABCellsInStroma, NucleiInStroma, DABNucleiClass)
-        println 'DAB cells with nucleus in Stroma region = ' + nb_DABNucCells_inStroma
+        roi.clearPathObjects()
+        roi.addPathObjects(nuclei)
+        roi.addPathObjects(DABCells)
+
+        deselectAll()
+        selectObjects(an)
+        runPlugin('qupath.lib.plugins.objects.DilateAnnotationPlugin', '{"radiusMicrons": 0.5,  "lineCap": "Round",  "removeInterior": false,  "constrainToParent": true}');
+        def newAn = getAnnotationObjects().last()
+        newAn.addPathObject(roi)
+        deselectAll()
+        selectObjects(an)
+        clearSelectedObjects()
 
         // Save annotations in Shapes format
         clearAllObjects()
-        addObject(an)
-        addObjects(NucleiInDAB)
-        addObjects(DABCellsInDAB)
-        addObjects(NucleiInStroma)
-        addObjects(DABCellsInStroma)
-        resolveHierarchy()
-        saveAnnotations(buildFilePath(resultsDir, imgNameWithOutExt+"_"+an.getName()))
+        addObject(newAn)
+        addObject(roi)
+        saveAnnotations(buildFilePath(resultsDir, imgNameWithOutExt+"_"+newAn.getName()))
 
         // Write results
-        def results = animalNb + "\t" + mutant + "\t" + treatment + "\t" + time + "\t" + an.getName() + "\t" + regionArea + "\t" + DABArea + "\t" +
-                DABCellsInDAB.size() + "\t" + NucleiInDAB.size() + "\t" + nb_DABNucCells_inDAB + "\t" + stromaArea + "\t" + DABCellsInStroma.size() +
-                "\t" + NucleiInStroma.size() + "\t" + nb_DABNucCells_inStroma + "\n"
+        def results = imgNameWithOutExt + "\t" + animalNb + "\t" + mutant + "\t" + treatment + "\t" + time + "\t" + newAn.getName() + "\t" + regionArea + "\t" + DABArea + "\t" +
+                nuclei.size() + "\t" + DABCells.size() + "\t" + nb_DABCells_nuclei + "\n"
         resultsFile << results
     }
+    clearAllObjects()
+    addObject(background)
+    saveAnnotations(buildFilePath(resultsDir, imgNameWithOutExt+"_"+background.getName()))
 }
