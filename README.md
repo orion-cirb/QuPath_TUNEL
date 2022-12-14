@@ -1,12 +1,12 @@
 # QuPath_TUNEL
 
-*Developed for:** Thassadite
+**Developed for:** Thassadite
 
-*Team:** De Thé
+**Team:** De Thé
 
-*Date:** July 2022
+**Date:** July 2022
 
-*Software:** QuPath
+**Software:** QuPath
 
 ### Images description
 
