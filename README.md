@@ -20,7 +20,7 @@
 ### Plugin description
 
 * Perform color deconvolution
-* Detect the holes in the tissue contour with a pixel classifier
+* Detect the holes in the tissue with a pixel classifier
 * In each ROI, detect nuclei and DAB cells with Stardist
 * Find out the number of DAB cells colocalizing with a nucleus
 
