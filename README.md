@@ -22,11 +22,11 @@
 * Perform color deconvolution
 * Detect the holes in the tissue with a pixel classifier
 * In each ROI, detect nuclei and DAB cells with Stardist
-* Find out the number of DAB cells colocalizing with a nucleus
+* Colocalize DAB cells with nuclei
 
 ### Dependencies
 
-* **QuPath pixel classifier* named *DAB*
+* **QuPath pixel classifier** named *DAB*
 * **Stardist** QuPath extension + *he_heavy_augment.pb* and *dsb2018_heavy_augment.pb* models
 
 ### Version history
