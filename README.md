@@ -1,9 +1,35 @@
 # QuPath_TUNEL
 
-Réécriture du script :
+*Developed for:** Thassadite
 
-Enlever la duplication des régions DAB et Stroma
+*Team:** De Thé
 
-Utiliser le StarDist pretrained model H&E pour la détection des nuclei (plutôt que le DSB)
+*Date:** July 2022
 
-Utiliser la fonction contains() pour la colocalisation des DAB cells avec les nuclei (plutôt qu'une distance entre les deux)
+*Software:** QuPath
+
+### Images description
+
+2D images of liver sections taken with the Axioscan
+
+2 stainings:
+  1. Hematoxylin: nuclei
+  2. DAB: DAB cells
+  
+
+### Plugin description
+
+* Perform color deconvolution
+* Detect the holes in the tissue contour with a pixel classifier
+* In each ROI, detect nuclei and DAB cells with Stardist
+* Find out the number of DAB cells colocalizing with a nucleus
+
+### Dependencies
+
+* **QuPath pixel classifier* named *DAB*
+* **Stardist** QuPath extension + *he_heavy_augment.pb* and *dsb2018_heavy_augment.pb* models
+
+### Version history
+
+Version 1 released on July 7, 2022.
+
